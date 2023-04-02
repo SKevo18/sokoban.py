@@ -34,5 +34,3 @@ A pure-Python 1st April terminal game based on the original [Cube Pusher](https:
 - [ ] Ability to restart level;
 - [ ] Score counter (when collecting something or when pushing cube to goal, etc...);
 - [ ] Saves (best steps, score, etc...);
-
-
