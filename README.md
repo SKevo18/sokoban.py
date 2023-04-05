@@ -1,6 +1,6 @@
 # Cube Pusher
 
-A pure-Python terminal game based on the original [Cube Pusher](https://idowngames.com/cube-pusher). Produced by ChatGPT-4 as an April fools experiment (modified).
+A pure-Python terminal game based on the original [Cube Pusher](https://idowngames.com/cube-pusher) (which was based on Sokoban - which this version actually resembles more closely). Produced by ChatGPT-4 as an April fools experiment (modified).
 
 ## How to play
 
