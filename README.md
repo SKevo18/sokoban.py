@@ -11,7 +11,7 @@ A pure-Python terminal game based on the original [Cube Pusher](https://idowngam
 
 ### NB
 
-- Each level has unlimited moves;
+- Each level has unlimited moves/time;
 - You can't pull cubes;
 - You can't undo a step;
 - You can't push 2 or more cubes at the same time;

@@ -1,11 +1,8 @@
 import typing as t
-
 import os
 import sys
-
 from pathlib import Path
-from time import sleep
-
+from enum import Enum
 
 
 ROOT_PATH = Path(__file__).parent.absolute()
@@ -14,7 +11,16 @@ LEVELS_ROOT = ROOT_PATH / 'levels'
 C = '\u001b[32;1m▣\u001b[0m'
 P = '\u001b[34;1m☺\u001b[0m'
 G = '\u001b[33;1m•\u001b[0m'
-NON_SOLID = (' ', C, G)
+NON_SOLID = (' ', C, G, 'P', 'C', 'G')
+
+
+
+class Direction(Enum):
+    UP = (-1, 0)
+    DOWN = (1, 0)
+    LEFT = (0, -1)
+    RIGHT = (0, 1)
+
 
 
 def get_key():
@@ -27,7 +33,7 @@ def get_key():
         import select
 
         fd = sys.stdin.fileno()
-        old_settings = tty.tcgetattr(fd) # type: ignore
+        old_settings = tty.tcgetattr(fd)  # type: ignore
 
         try:
             tty.setcbreak(fd)
@@ -36,7 +42,7 @@ def get_key():
                     return sys.stdin.read(1)
 
         finally:
-            tty.tcsetattr(fd, tty.TCSADRAIN, old_settings) # type: ignore
+            tty.tcsetattr(fd, tty.TCSADRAIN, old_settings)  # type: ignore
 
 
 
@@ -48,177 +54,173 @@ def clear_screen():
 
 
 
-def load_levels() -> t.List[list]:
-    level_files = sorted(LEVELS_ROOT.glob('level_*.txt'), key=lambda path: path.stem)
-    levels = []
-
-    for level_file in level_files:
-        level_data = [list(line.rstrip()) for line in level_file.read_text('utf-8').splitlines()]
-        levels.append(level_data)
-
-
-    if len(levels) < 1:
-        raise RuntimeError("No levels are defined.")
-
-    return levels
+class CubePusher:
+    def __init__(self, level_index: int = 0):
+        self.boards = self.load_levels()
+        self.level_index = level_index
+        self.board = self.boards[self.level_index]
+        self.steps = 0
+        self.player_position, self.cube_positions, self.goal_positions = self.find_initial_positions()
 
 
+    def load_levels(self) -> t.List[list]:
+        level_files = sorted(LEVELS_ROOT.glob('level_*.txt'), key=lambda path: path.stem)
+        levels = []
 
-def find_initial_positions() -> t.Tuple[t.Tuple[int, int], t.List[t.Tuple[int, int]], t.List[t.Tuple[int, int]]]:
-    global BOARD
-    player_position, CUBE_POSITION, goal_positions = None, [], []
+        for level_file in level_files:
+            level_data = [list(line.rstrip()) for line in level_file.read_text('utf-8').splitlines()]
+            levels.append(level_data)
 
-    for y, row in enumerate(BOARD):
-        for x, cell in enumerate(row):
-            if cell == 'P':
-                player_position = (y, x)
-                BOARD[y][x] = ' '
+        if len(levels) < 1:
+            raise RuntimeError("No levels are defined.")
 
-            elif cell == 'C':
-                CUBE_POSITION.append((y, x))
-                BOARD[y][x] = ' '
-
-            elif cell == 'G':
-                goal_positions.append((y, x))
-                BOARD[y][x] = ' '
-    
-    if player_position is None:
-        raise RuntimeError('Player position is not defined.')
+        return levels
 
 
-    return player_position, CUBE_POSITION, goal_positions
+    def find_initial_positions(self) -> t.Tuple[t.Tuple[int, int], t.List[t.Tuple[int, int]], t.List[t.Tuple[int, int]]]:
+        player_position, cube_positions, goal_positions = None, [], []
+
+        for y, row in enumerate(self.board):
+            for x, cell in enumerate(row):
+                if cell == 'P':
+                    player_position = (y, x)
+                elif cell == 'C':
+                    cube_positions.append((y, x))
+                elif cell == 'G':
+                    goal_positions.append((y, x))
+
+        if player_position is None or len(cube_positions) != len(goal_positions):
+            raise RuntimeError('Player position is not defined, or amount of cubes do not equal amount of goals.')
+
+        return player_position, cube_positions, goal_positions
 
 
-BOARDS = load_levels()
-print(sys.argv)
-
-STEPS = 0
-
-try:
-    LEVEL_INDEX = int(sys.argv[1]) - 1
-    BOARD = BOARDS[LEVEL_INDEX]
-except (IndexError, ValueError):
-    LEVEL_INDEX = 0
-    BOARD = BOARDS[LEVEL_INDEX]
-initial_player_position, initial_cube_positions, GOAL_POSITIONS = find_initial_positions()
-
-PLAYER_POSITION = initial_player_position
-CUBE_POSITIONS = initial_cube_positions
+    def print_hud(self):
+        print(f"""
+Level: {self.level_index + 1}
+Solution Steps: {self.steps}
+    """)
+        print()
 
 
+    def print_board(self):
+        self.print_hud()
 
-def print_hud():
-    print(f"""
-Cube Pusher (https://github.com/SKevo18/cube_pusher)
+        for y, row in enumerate(self.board):
+            for x, cell in enumerate(row):
+                if (y, x) == self.player_position:
+                    print(P, end=" ")
+
+                elif (y, x) in self.cube_positions:
+                    print(C, end=" ")
+
+                elif (y, x) in self.goal_positions:
+                    print(G, end=" ")
+
+                elif cell in ('P', 'C', 'G'):
+                    print(" ", end=" ")
+
+                else:
+                    print(cell, end=" ")
+
+            print()
+
+
+    def next_level(self):
+        if (self.level_index + 1) >= len(self.boards):
+            clear_screen()
+            print("You have completed all levels! Congratulations!")
+            sys.exit(0)
+
+        else:
+            print(f"""
+                You have finished level {self.level_index + 1} with {self.steps} steps!
+
+                Press 'Enter' to continue to level {self.level_index + 2}, anything else to restart current level
+            """)
+
+            enter = input()
+            if enter == '':
+                self.level_index += 1
+                self.board = self.boards[self.level_index]
+                self.player_position, self.cube_positions, self.goal_positions = self.find_initial_positions()
+                self.steps = 0
+
+            else:
+                self.restart_level()
+
+
+    def restart_level(self):
+        self.player_position, self.cube_positions, _ = self.find_initial_positions()
+        self.steps = 0
+
+
+    def is_level_completed(self):
+        return all([position in self.goal_positions for position in self.cube_positions])
+
+
+    def move(self, direction: Direction):
+        dx, dy = direction.value
+        new_player_position = (self.player_position[0] + dx, self.player_position[1] + dy)
+
+        if self.board[new_player_position[0]][new_player_position[1]] in NON_SOLID:
+            if new_player_position in self.cube_positions:
+                new_cube_position = (new_player_position[0] + dx, new_player_position[1] + dy)
+                if self.board[new_cube_position[0]][new_cube_position[1]] in NON_SOLID and new_cube_position not in self.cube_positions:
+                    self.cube_positions[self.cube_positions.index(new_player_position)] = new_cube_position
+                    self.player_position = new_player_position
+                    self.steps += 1
+            elif new_player_position not in self.cube_positions:
+                self.player_position = new_player_position
+                self.steps += 1
+
+        if self.is_level_completed():
+            self.next_level()
+
+
+    def main_menu(self):
+        print("""Cube Pusher (https://github.com/SKevo18/cube_pusher)
 
 Controls:
 • Move with `w`, `a`, `s`, `d`.
 • `q` to exit.
 
-Level: {LEVEL_INDEX + 1}
-Solution Steps: {STEPS}
-    """)
-    print()
+Press 'Enter' to start.""")
 
 
+    def game_loop(self):
+        while True:
+            clear_screen()
+            self.print_board()
 
-def print_board():
-    print_hud()
+            key = get_key()
+            if key in ('q', 'Q'):
+                break
 
-    for y, row in enumerate(BOARD):
-        for x, cell in enumerate(row):
-            if (y, x) == PLAYER_POSITION:
-                print(P, end=" ")
+            if key in ('r', 'R'):
+                self.restart_level()
+                continue
 
-            elif (y, x) in CUBE_POSITIONS:
-                print(C, end=" ")
+            direction = None
+            if key in ('w', 'W', 'H'):
+                direction = Direction.UP
+            elif key in ('s', 'S', 'P'):
+                direction = Direction.DOWN
+            elif key in ('a', 'A', 'K'):
+                direction = Direction.LEFT
+            elif key in ('d', 'D', 'M'):
+                direction = Direction.RIGHT
 
-            elif (y, x) in GOAL_POSITIONS:
-                print(G, end=" ")
-            
-            else:
-                print(cell, end=" ")
-
-        print()
-
-
-
-def reload_positions():
-    global LEVEL_INDEX, PLAYER_POSITION, CUBE_POSITIONS, GOAL_POSITIONS, BOARD
-
-    BOARD = BOARDS[LEVEL_INDEX]
-    initial_player_position, initial_cube_position, GOAL_POSITIONS = find_initial_positions()
-    PLAYER_POSITION = initial_player_position
-    CUBE_POSITIONS = initial_cube_position
-
-
-
-def next_level():
-    global LEVEL_INDEX, PLAYER_POSITION, CUBE_POSITIONS, GOAL_POSITIONS, BOARD
-    LEVEL_INDEX += 1
-
-    if LEVEL_INDEX >= len(BOARDS):
-        clear_screen()
-        print("You completed all levels! Congratulations!")
-        sys.exit(0)
-
-    else:
-        reload_positions()
-
-
-
-def is_level_completed():
-    return all([position in GOAL_POSITIONS for position in CUBE_POSITIONS])
-
-
-
-def game_loop():
-    global PLAYER_POSITION, STEPS
-
-    while True:
-        clear_screen()
-        print_board()
-
-        key = get_key()
-        if key in ('q', 'Q'):
-            break
-
-
-        dx, dy = 0, 0
-        if key in ('w', 'W', 'H'):
-            dx, dy = -1, 0
-        elif key in ('s', 'S', 'P'):
-            dx, dy = 1, 0
-        elif key in ('a', 'A', 'K'):
-            dx, dy = 0, -1
-        elif key in ('d', 'D', 'M'):
-            dx, dy = 0, 1
-
-
-        if dx or dy:
-            new_player_position = (PLAYER_POSITION[0] + dx, PLAYER_POSITION[1] + dy)
-
-            if BOARD[new_player_position[0]][new_player_position[1]] in NON_SOLID:
-                if new_player_position in CUBE_POSITIONS:
-                    new_cube_position = (new_player_position[0] + dx, new_player_position[1] + dy)
-                    if BOARD[new_cube_position[0]][new_cube_position[1]] in NON_SOLID and new_cube_position not in CUBE_POSITIONS:
-                        CUBE_POSITIONS[CUBE_POSITIONS.index(new_player_position)] = new_cube_position
-                        PLAYER_POSITION = new_player_position
-                        STEPS += 1
-
-                elif new_player_position not in CUBE_POSITIONS:
-                    PLAYER_POSITION = new_player_position
-                    STEPS += 1
-
-            if is_level_completed():
-                STEPS = 0
-                next_level()
+            if direction:
+                self.move(direction)
 
 
 
 if __name__ == '__main__':
     try:
-        game_loop()
+        level_index = int(sys.argv[1]) - 1 if len(sys.argv) > 1 else 0
+        cube_pusher = CubePusher(level_index)
+        cube_pusher.game_loop()
 
     except KeyboardInterrupt:
         clear_screen()
