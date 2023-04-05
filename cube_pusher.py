@@ -11,9 +11,9 @@ from time import sleep
 ROOT_PATH = Path(__file__).parent.absolute()
 LEVELS_ROOT = ROOT_PATH / 'levels'
 
-C = '▣'
-P = '☺'
-G = '•'
+C = '\u001b[32;1m▣\u001b[0m'
+P = '\u001b[34;1m☺\u001b[0m'
+G = '\u001b[33;1m•\u001b[0m'
 NON_SOLID = (' ', C, G)
 
 
@@ -185,13 +185,13 @@ def game_loop():
 
 
         dx, dy = 0, 0
-        if key in ('w', 'W'):
+        if key in ('w', 'W', 'H'):
             dx, dy = -1, 0
-        elif key in ('s', 'S'):
+        elif key in ('s', 'S', 'P'):
             dx, dy = 1, 0
-        elif key in ('a', 'A'):
+        elif key in ('a', 'A', 'K'):
             dx, dy = 0, -1
-        elif key in ('d', 'D'):
+        elif key in ('d', 'D', 'M'):
             dx, dy = 0, 1
 
 
