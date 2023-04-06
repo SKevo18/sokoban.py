@@ -1,6 +1,9 @@
 import typing as t
+
 import os
 import sys
+
+from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
 
@@ -14,6 +17,10 @@ P = '\u001b[34;1m☺\u001b[0m'
 NON_SOLID = (' ', G, C, P, 'G', 'C', 'P')
 
 
+class QuitGame(Exception):
+    pass
+
+
 
 class Direction(Enum):
     UP = (-1, 0)
@@ -23,59 +30,95 @@ class Direction(Enum):
 
 
 
-def get_key():
-    if os.name == 'nt':
-        import msvcrt
-        return msvcrt.getch().decode('utf-8')
-
-    elif os.name == 'posix':
+def get_key() -> bytes:
+    if os.name == 'posix':
+        import termios
         import tty
-        import select
 
         fd = sys.stdin.fileno()
-        old_settings = tty.tcgetattr(fd)  # type: ignore
-
+        old_settings = termios.tcgetattr(fd)
         try:
-            tty.setcbreak(fd)
-            while True:
-                if select.select([sys.stdin], [], [], 0.1)[0]:
-                    return sys.stdin.read(1)
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.buffer.read(1)
+
+            if ch == b'\x1b':
+                ch += sys.stdin.buffer.read(2)
 
         finally:
-            tty.tcsetattr(fd, tty.TCSADRAIN, old_settings)  # type: ignore
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+        return ch
+
+
+    elif os.name == 'nt':
+        import msvcrt
+
+        while True:
+            if msvcrt.kbhit():
+                ch = msvcrt.getch()
+                return ch
+
+    else:
+        raise NotImplementedError(f"`get_key()` is not implemented for this platform ({os.name})")
+
+
+
+def wait_for_keys(to_wait: t.Iterable[bytes]) -> bool:
+    while True:
+        key = get_key()
+
+        return key in to_wait
 
 
 
 def clear_screen():
     if os.name == 'nt':
         os.system('cls')
+
     else:
         print("\033c", end='')
 
 
 
+@dataclass
 class Sokoban:
-    def __init__(self, level_index: int = 0):
-        # TODO: load levels at runtime, not at startup
-        self.boards = self.load_levels()
-        self.level_index = level_index
-        self.board = self.boards[self.level_index]
+    level_number: int = 1
+    level_pack: str = 'default'
+
+
+    def __post_init__(self):
+        if self.level_number < 1:
+            raise RuntimeError(f"Level number can't be lower than 1: {self.level_number}")
+
+
+        self.level_files = self.get_level_files(self.level_pack)
+
+        try:
+            self.board = self.load_level(self.level_files[self.level_number - 1])
+
+        except IndexError:
+            raise RuntimeError(f"There is no level with number {self.level_number}")
+
+
         self.steps = 0
         self.player_position, self.cube_positions, self.goal_positions = self.find_initial_positions()
 
 
-    def load_levels(self) -> t.List[list]:
-        level_files = sorted(LEVELS_ROOT.glob('level_*.txt'), key=lambda path: path.stem)
-        levels = []
 
-        for level_file in level_files:
-            level_data = [list(line.rstrip()) for line in level_file.read_text('utf-8').splitlines()]
-            levels.append(level_data)
+    def get_level_files(self, level_pack: str) -> t.List[Path]:
+        def __int_stem(path: Path) -> int:
+            try:
+                return int(path.stem)
+            except ValueError:
+                raise RuntimeError(f'Invalid level file name `{path.relative_to(LEVELS_ROOT)}` (must be an integer).')
 
-        if len(levels) < 1:
-            raise RuntimeError("No levels are defined.")
+        return sorted((LEVELS_ROOT / level_pack).glob('*.txt'), key=__int_stem)
 
-        return levels
+
+
+    def load_level(self, level_file: Path) -> t.List[list]:
+        return [list(line.rstrip()) for line in level_file.read_text('utf-8').splitlines()]
+
 
 
     def find_initial_positions(self) -> t.Tuple[t.Tuple[int, int], t.List[t.Tuple[int, int]], t.List[t.Tuple[int, int]]]:
@@ -98,7 +141,7 @@ class Sokoban:
 
     def print_hud(self):
         print(f"""
-Level: {self.level_index + 1}
+Level: {self.level_pack}/{self.level_number}
 Solution Steps: {self.steps}
     """)
         print()
@@ -128,28 +171,40 @@ Solution Steps: {self.steps}
 
 
     def next_level(self):
-        if (self.level_index + 1) >= len(self.boards):
-            clear_screen()
-            print("You have completed all levels! Congratulations!")
-            sys.exit(0)
-
-        else:
+        if (self.level_number + 1) >= len(self.level_files):
             clear_screen()
             print(f"""
-                You have finished level {self.level_index + 1} with {self.steps} steps!
+                You have completed all levels in level pack `{self.level_pack}`! Congratulations!
+            """)
+            raise QuitGame()
 
-                Press 'Enter' to continue to level {self.level_index + 2}, anything else to restart current level
+        else:
+            _next_board = self.load_level(self.level_files[self.level_number])
+            clear_screen()
+
+            print(f"""
+                You have finished level {self.level_number} with {self.steps} steps!
+
+                Press `Enter` to continue to level {self.level_number + 1}, `r` to restart current level, `q` to quit.
             """)
 
-            enter = input()
-            if enter == '':
-                self.level_index += 1
-                self.board = self.boards[self.level_index]
-                self.player_position, self.cube_positions, self.goal_positions = self.find_initial_positions()
-                self.steps = 0
+            while True:
+                key = get_key()
 
-            else:
-                self.restart_level()
+                if key in (b'\r', b'\n'):
+                    self.level_number += 1
+                    self.board = _next_board
+                    self.player_position, self.cube_positions, self.goal_positions = self.find_initial_positions()
+                    self.steps = 0
+                    break
+
+                elif key in (b'r'):
+                    self.restart_level()
+                    break
+                
+                elif key in (b'q'):
+                    raise QuitGame()
+
 
 
     def restart_level(self):
@@ -157,8 +212,10 @@ Solution Steps: {self.steps}
         self.steps = 0
 
 
+
     def is_level_completed(self):
         return all([position in self.goal_positions for position in self.cube_positions])
+
 
 
     def move(self, direction: Direction):
@@ -172,6 +229,7 @@ Solution Steps: {self.steps}
                     self.cube_positions[self.cube_positions.index(new_player_position)] = new_cube_position
                     self.player_position = new_player_position
                     self.steps += 1
+
             elif new_player_position not in self.cube_positions:
                 self.player_position = new_player_position
                 self.steps += 1
@@ -180,14 +238,53 @@ Solution Steps: {self.steps}
             self.next_level()
 
 
+
     def main_menu(self):
-        print("""Soko-Ban.py (https://github.com/SKevo18/sokoban.py)
+        clear_screen()
 
-Controls:
-• Move with `w`, `a`, `s`, `d`.
-• `q` to exit.
+        print(f"""
+            Sokoban.py (https://github.com/SKevo18/sokoban.py)
 
-Press 'Enter' to start.""")
+            Level pack: {self.level_pack}
+            Level: {self.level_number}
+
+            Controls:
+            • Move with `w`, `a`, `s`, `d` or arrow keys.
+            • `r` to restart.
+            • `q` to exit.
+
+            Press 'Enter' to start, anything else to quit.
+        """)
+
+        if wait_for_keys((b'\r', b'\n')):
+            return self.game_loop()
+
+
+
+    def handle_game_input(self):
+        key = get_key()
+        if key in (b'q'):
+            raise QuitGame
+
+        if key in (b'r'):
+            return self.restart_level()
+
+        if key == b'\x00':
+            return
+
+        direction = None
+        if key in (b'w', b'H', b'\x1b[A'):
+            direction = Direction.UP
+        elif key in (b's', b'P', b'\x1b[B'):
+            direction = Direction.DOWN
+        elif key in (b'a', b'K', b'\x1b[D'):
+            direction = Direction.LEFT
+        elif key in (b'd', b'M', b'\x1b[C'):
+            direction = Direction.RIGHT
+
+        if direction:
+            return self.move(direction)
+
 
 
     def game_loop(self):
@@ -195,35 +292,32 @@ Press 'Enter' to start.""")
             clear_screen()
             self.print_board()
 
-            key = get_key()
-            if key in ('q', 'Q'):
-                break
+            try:
+                self.handle_game_input()
 
-            if key in ('r', 'R'):
-                self.restart_level()
-                continue
-
-            direction = None
-            if key in ('w', 'W', 'H'):
-                direction = Direction.UP
-            elif key in ('s', 'S', 'P'):
-                direction = Direction.DOWN
-            elif key in ('a', 'A', 'K'):
-                direction = Direction.LEFT
-            elif key in ('d', 'D', 'M'):
-                direction = Direction.RIGHT
-
-            if direction:
-                self.move(direction)
+            except QuitGame:
+                sys.exit(0)
 
 
 
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('level_number', type=int, default=1, nargs='?')
+    parser.add_argument('level_pack', type=str, default='default', nargs='?')
+    args = parser.parse_args()
+
+
     try:
-        level_index = int(sys.argv[1]) - 1 if len(sys.argv) > 1 else 0
-        sokoban = Sokoban(level_index)
-        sokoban.game_loop()
+        sokoban = Sokoban(args.level_number, args.level_pack)
+        sokoban.main_menu()
 
     except KeyboardInterrupt:
         clear_screen()
         print("Exitting...")
+
+    except Exception as exception:
+        clear_screen()
+        print("Error:", exception)
+        sys.exit(1)
