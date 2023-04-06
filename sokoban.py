@@ -9,8 +9,8 @@ ROOT_PATH = Path(__file__).parent.absolute()
 LEVELS_ROOT = ROOT_PATH / 'levels'
 
 C = '\u001b[32;1m▣\u001b[0m'
-P = '\u001b[34;1m☺\u001b[0m'
-G = '\u001b[33;1m•\u001b[0m'
+P = '\u001b[33;1m☺\u001b[0m'
+G = '\u001b[34;1m•\u001b[0m'
 NON_SOLID = (' ', C, G, 'P', 'C', 'G')
 
 
@@ -54,8 +54,9 @@ def clear_screen():
 
 
 
-class CubePusher:
+class Sokoban:
     def __init__(self, level_index: int = 0):
+        # TODO: load levels at runtime, not at startup
         self.boards = self.load_levels()
         self.level_index = level_index
         self.board = self.boards[self.level_index]
@@ -133,6 +134,7 @@ Solution Steps: {self.steps}
             sys.exit(0)
 
         else:
+            clear_screen()
             print(f"""
                 You have finished level {self.level_index + 1} with {self.steps} steps!
 
@@ -179,7 +181,7 @@ Solution Steps: {self.steps}
 
 
     def main_menu(self):
-        print("""Cube Pusher (https://github.com/SKevo18/cube_pusher)
+        print("""Soko-Ban.py (https://github.com/SKevo18/sokoban.py)
 
 Controls:
 • Move with `w`, `a`, `s`, `d`.
@@ -219,8 +221,8 @@ Press 'Enter' to start.""")
 if __name__ == '__main__':
     try:
         level_index = int(sys.argv[1]) - 1 if len(sys.argv) > 1 else 0
-        cube_pusher = CubePusher(level_index)
-        cube_pusher.game_loop()
+        sokoban = Sokoban(level_index)
+        sokoban.game_loop()
 
     except KeyboardInterrupt:
         clear_screen()
