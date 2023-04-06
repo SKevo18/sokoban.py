@@ -8,10 +8,10 @@ from enum import Enum
 ROOT_PATH = Path(__file__).parent.absolute()
 LEVELS_ROOT = ROOT_PATH / 'levels'
 
-C = '\u001b[32;1m▣\u001b[0m'
-P = '\u001b[33;1m☺\u001b[0m'
-G = '\u001b[34;1m•\u001b[0m'
-NON_SOLID = (' ', C, G, 'P', 'C', 'G')
+G = '\u001b[32;1m•\u001b[0m'
+C = '\u001b[33;1m▣\u001b[0m'
+P = '\u001b[34;1m☺\u001b[0m'
+NON_SOLID = (' ', G, C, P, 'G', 'C', 'P')
 
 
 
