@@ -97,7 +97,7 @@ class Sokoban:
             self.board = self.load_level(self.level_files[self.level_number - 1])
 
         except IndexError:
-            raise RuntimeError(f"There is no level with number {self.level_number}")
+            raise RuntimeError(f"There is no level with number {self.level_number} in level pack {self.level_pack}, or the pack does not exist.")
 
 
         self.steps = 0
